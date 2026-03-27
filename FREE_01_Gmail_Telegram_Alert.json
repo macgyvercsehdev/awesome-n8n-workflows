@@ -1,0 +1,271 @@
+{
+  "name": "Macgyver Automações | Alerta Telegram para Emails Importantes (Gmail)",
+  "nodes": [
+    {
+      "parameters": {
+        "pollTimes": {
+          "item": [
+            {
+              "mode": "everyMinute"
+            }
+          ]
+        },
+        "filters": {},
+        "options": {
+          "allowUnauthorizedCerts": false
+        }
+      },
+      "type": "n8n-nodes-base.gmailTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        0
+      ],
+      "id": "00a5c439-697b-4254-8939-95db20181fa2",
+      "name": "TRG | Novo Email (Gmail)"
+    },
+    {
+      "parameters": {
+        "mode": "manual",
+        "duplicateItem": false,
+        "assignments": {
+          "assignments": [
+            {
+              "id": "5a83ca18-e680-4883-8737-425369f0041a",
+              "name": "app",
+              "value": "gmail-telegram-alert",
+              "type": "string"
+            },
+            {
+              "id": "9c8c189a-93ea-4a65-ba8a-87ae621c8a8a",
+              "name": "version",
+              "value": "1.0",
+              "type": "string"
+            },
+            {
+              "id": "5a89e965-083f-48af-8be8-b041e559474c",
+              "name": "remetentesVIP",
+              "value": "chefe@empresa.com,cliente@exemplo.com,financeiro@empresa.com",
+              "type": "string"
+            },
+            {
+              "id": "d549d3da-fa6d-471c-b06d-03979152ddca",
+              "name": "assuntosUrgentes",
+              "value": "urgente,fatura,pagamento,prazo,deadline",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        220,
+        0
+      ],
+      "id": "c4fba75c-0aef-43e3-acc8-4de86d1a5f79",
+      "name": "CFG - Config"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": false,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "bb101b7e-30d1-4047-b22b-42dae55c2eff",
+              "leftValue": "={{ $('TRG | Novo Email (Gmail)').item.json.from.text }}",
+              "rightValue": "={{ $('CFG - Config').item.json.remetentesVIP }}",
+              "operator": {
+                "type": "string",
+                "operation": "exists"
+              }
+            }
+          ],
+          "combinator": "or"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        440,
+        0
+      ],
+      "id": "de701903-5ad0-4825-9501-466407bc15ad",
+      "name": "IF | Email Importante?"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Checa se remetente está na lista VIP ou assunto contém palavras urgentes\nconst email = $('TRG | Novo Email (Gmail)').first().json;\nconst cfg = $('CFG - Config').first().json;\n\nconst from = (email.from?.text || email.from || '').toLowerCase();\nconst subject = (email.subject || '').toLowerCase();\n\nconst vips = cfg.remetentesVIP.split(',').map(e => e.trim().toLowerCase());\nconst keywords = cfg.assuntosUrgentes.split(',').map(k => k.trim().toLowerCase());\n\nconst isVIP = vips.some(v => from.includes(v));\nconst isUrgent = keywords.some(k => subject.includes(k));\n\nif (!isVIP && !isUrgent) {\n  return [];  // Filtra — não envia nada\n}\n\nconst motivo = [];\nif (isVIP) motivo.push('Remetente VIP');\nif (isUrgent) motivo.push('Assunto urgente');\n\nreturn [{\n  json: {\n    de: email.from?.text || email.from || 'Desconhecido',\n    assunto: email.subject || '(sem assunto)',\n    data: email.date || new Date().toISOString(),\n    motivo: motivo.join(' + '),\n    preview: (email.snippet || email.textPlain || '').substring(0, 200)\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        440,
+        0
+      ],
+      "id": "63533f9b-8f15-4df5-97e3-f885ec6f1849",
+      "name": "FN | Filtrar e Formatar"
+    },
+    {
+      "parameters": {
+        "chatId": "=__SEU_CHAT_ID__",
+        "text": "=📧 *Email Importante*\n\n*De:* {{ $json.de }}\n*Assunto:* {{ $json.assunto }}\n*Motivo:* {{ $json.motivo }}\n*Data:* {{ $json.data }}\n\n📝 _{{ $json.preview }}_",
+        "additionalFields": {
+          "parse_mode": "Markdown"
+        }
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        660,
+        0
+      ],
+      "id": "9eacd03a-c71b-4e05-b9b3-5faa8e0e5fd9",
+      "name": "NTF | Alerta → Telegram",
+      "credentials": {
+        "telegramApi": {
+          "id": "__CREDENTIAL_ID__",
+          "name": "Telegram Bot"
+        }
+      }
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        660,
+        200
+      ],
+      "id": "eaf23b5e-5f4f-4d8c-87c5-af61c8405dfe",
+      "name": "END | Ignorar (não importante)"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.errorTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        400
+      ],
+      "id": "c9f8fc31-ef3e-40c3-a97f-5c5191294eaa",
+      "name": "TRG | Error Trigger"
+    },
+    {
+      "parameters": {
+        "chatId": "=__SEU_CHAT_ID__",
+        "text": "=🚨 *Erro no workflow Gmail Alert*\n\n*Erro:* {{ $json.execution?.error?.message || 'Erro desconhecido' }}\n*Execution:* {{ $json.execution?.id || 'N/A' }}",
+        "additionalFields": {
+          "parse_mode": "Markdown"
+        }
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        220,
+        400
+      ],
+      "id": "c47222ed-57ee-4acd-9984-98009dd2b1fc",
+      "name": "NTF | Erro → Telegram",
+      "credentials": {
+        "telegramApi": {
+          "id": "__CREDENTIAL_ID__",
+          "name": "Telegram Bot"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "content": "## 📧 Macgyver Automações | Alerta Telegram p/ Emails Importantes\n\n**O que faz:** Monitora Gmail, filtra por remetente VIP ou assunto urgente, manda alerta no Telegram.\n\n**Como configurar:**\n1. Crie um bot Telegram via @BotFather → copie o token\n2. Descubra seu Chat ID (mande /start pro bot @userinfobot)\n3. Coloque o Chat ID no node `NTF | Alerta → Telegram` onde diz `__SEU_CHAT_ID__`\n4. Edite `CFG - Config`: coloque seus remetentes VIP e palavras-chave\n5. Configure a credencial Gmail (OAuth2)\n6. Ative o workflow!\n\n**Credenciais necessárias:** Gmail (OAuth2), Telegram Bot API\n\n🔗 Macgyver Automações",
+        "height": 480,
+        "width": 420,
+        "color": 4
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -280,
+        -160
+      ],
+      "id": "24c61c5a-2cbd-4b5d-ba5d-84fa6d006bf9",
+      "name": "📋 Instruções"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "TRG | Novo Email (Gmail)": {
+      "main": [
+        [
+          {
+            "node": "CFG - Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "CFG - Config": {
+      "main": [
+        [
+          {
+            "node": "FN | Filtrar e Formatar",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "FN | Filtrar e Formatar": {
+      "main": [
+        [
+          {
+            "node": "NTF | Alerta → Telegram",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "TRG | Error Trigger": {
+      "main": [
+        [
+          {
+            "node": "NTF | Erro → Telegram",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "meta": {
+    "templateVersion": "1.0.0",
+    "author": "Macgyver Automações",
+    "category": "Produtividade / Alertas",
+    "brand": "Macgyver Automações"
+  },
+  "tags": [
+    {
+      "name": "Macgyver Automações"
+    },
+    {
+      "name": "Free Template"
+    },
+    {
+      "name": "Gmail"
+    },
+    {
+      "name": "Telegram"
+    }
+  ]
+}

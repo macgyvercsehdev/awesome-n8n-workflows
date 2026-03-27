@@ -1,0 +1,317 @@
+{
+  "name": "Macgyver Automações | Backup Semanal Google Sheets → Drive",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 2 * * 0"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        0
+      ],
+      "id": "135470f5-6fa6-44c3-8685-81d3bccaccc6",
+      "name": "TRG | Schedule (Dom 2h)"
+    },
+    {
+      "parameters": {
+        "mode": "manual",
+        "duplicateItem": false,
+        "assignments": {
+          "assignments": [
+            {
+              "id": "960be4db-6304-4ebf-95eb-46e244a03ae3",
+              "name": "app",
+              "value": "sheets-backup",
+              "type": "string"
+            },
+            {
+              "id": "02e39b97-a5dc-4a1c-be87-3caefd22ec75",
+              "name": "version",
+              "value": "1.0",
+              "type": "string"
+            },
+            {
+              "id": "67100393-db33-4e2f-a6fe-b34d8d7eb1c9",
+              "name": "spreadsheetId",
+              "value": "__ID_DA_PLANILHA__",
+              "type": "string"
+            },
+            {
+              "id": "a0d26400-53a8-4990-aa64-6eca00b9afee",
+              "name": "sheetName",
+              "value": "Sheet1",
+              "type": "string"
+            },
+            {
+              "id": "5007b0ed-e320-4132-a337-b311cc165373",
+              "name": "backupFolderId",
+              "value": "__ID_DA_PASTA_DRIVE__",
+              "type": "string"
+            },
+            {
+              "id": "94bf2e7e-2d5f-4ba8-9c3d-6fa2871ab0c9",
+              "name": "chatIdTelegram",
+              "value": "__SEU_CHAT_ID__",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        220,
+        0
+      ],
+      "id": "f1ada31b-c0a6-4d0b-af71-2a2d1e6b6c41",
+      "name": "CFG - Config"
+    },
+    {
+      "parameters": {
+        "operation": "read",
+        "documentId": {
+          "__rl": true,
+          "value": "={{ $json.spreadsheetId }}",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "={{ $json.sheetName }}",
+          "mode": "name"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        440,
+        0
+      ],
+      "id": "03079ca4-47d1-418a-b3dc-052eece7fabe",
+      "name": "DB | Ler Planilha",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "__CREDENTIAL_ID__",
+          "name": "Google Sheets"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Converter dados da planilha em CSV\nconst items = $input.all();\nif (!items.length) {\n  return [{ json: { skip: true, reason: 'Planilha vazia' } }];\n}\n\nconst cfg = $('CFG - Config').first().json;\n\n// Headers\nconst headers = Object.keys(items[0].json);\nconst csvLines = [headers.join(',')];\n\n// Rows\nfor (const item of items) {\n  const row = headers.map(h => {\n    const val = String(item.json[h] || '').replace(/\"/g, '\"\"');\n    return `\"${val}\"`;\n  });\n  csvLines.push(row.join(','));\n}\n\nconst csv = csvLines.join('\\n');\nconst now = new Date();\nconst dateStr = now.toISOString().split('T')[0];\nconst fileName = `backup_${cfg.sheetName}_${dateStr}.csv`;\n\nreturn [{\n  json: {\n    fileName,\n    totalRows: items.length,\n    folderId: cfg.backupFolderId,\n    skip: false\n  },\n  binary: {\n    data: {\n      data: Buffer.from(csv, 'utf-8').toString('base64'),\n      mimeType: 'text/csv',\n      fileName\n    }\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        660,
+        0
+      ],
+      "id": "0d4c43cb-918f-4ebb-a7cf-e242983069e4",
+      "name": "FN | Converter p/ CSV"
+    },
+    {
+      "parameters": {
+        "name": "={{ $json.fileName }}",
+        "folderId": {
+          "__rl": true,
+          "value": "={{ $json.folderId }}",
+          "mode": "id"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        880,
+        0
+      ],
+      "id": "871dddd4-e7ca-43b2-8b31-6b6f294c6197",
+      "name": "DB | Upload → Google Drive",
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "__CREDENTIAL_ID__",
+          "name": "Google Drive"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $('CFG - Config').item.json.chatIdTelegram }}",
+        "text": "=✅ *Backup concluído!*\n\n📄 {{ $('FN | Converter p/ CSV').item.json.fileName }}\n📊 {{ $('FN | Converter p/ CSV').item.json.totalRows }} linhas\n📁 Salvo no Google Drive\n⏰ {{ new Date().toLocaleString('pt-BR') }}",
+        "additionalFields": {
+          "parse_mode": "Markdown"
+        }
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        1100,
+        0
+      ],
+      "id": "debf8a66-4fca-4d9c-a7b6-7d07ea86c3ad",
+      "name": "NTF | Sucesso → Telegram",
+      "credentials": {
+        "telegramApi": {
+          "id": "__CREDENTIAL_ID__",
+          "name": "Telegram Bot"
+        }
+      }
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.errorTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        400
+      ],
+      "id": "98d57ee4-5749-4f78-8abb-8640345c1a08",
+      "name": "TRG | Error Trigger"
+    },
+    {
+      "parameters": {
+        "chatId": "=__SEU_CHAT_ID__",
+        "text": "=🚨 *Erro no Backup Sheets*\n\n*Erro:* {{ $json.execution?.error?.message || 'Erro desconhecido' }}\n*Execution:* {{ $json.execution?.id || 'N/A' }}",
+        "additionalFields": {
+          "parse_mode": "Markdown"
+        }
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        220,
+        400
+      ],
+      "id": "38e6cbaf-036b-47f7-9e8d-48641c32274c",
+      "name": "NTF | Erro → Telegram",
+      "credentials": {
+        "telegramApi": {
+          "id": "__CREDENTIAL_ID__",
+          "name": "Telegram Bot"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "content": "## 💾 Macgyver Automações | Backup Semanal Google Sheets → Drive\n\n**O que faz:** Todo domingo às 2h, lê sua planilha, converte em CSV com data no nome, sobe pro Drive.\n\n**Como configurar:**\n1. Edite `CFG - Config`:\n   - `spreadsheetId`: ID da planilha (da URL)\n   - `sheetName`: nome da aba\n   - `backupFolderId`: ID da pasta no Drive\n   - `chatIdTelegram`: seu Chat ID\n2. Configure credenciais Google (Sheets + Drive OAuth2)\n3. Configure credencial Telegram\n4. Ative o workflow!\n\n**Dica:** Duplique este workflow pra cada planilha importante.\n\n**Credenciais:** Google Sheets OAuth2, Google Drive OAuth2, Telegram Bot\n\n🔗 Macgyver Automações",
+        "height": 480,
+        "width": 420,
+        "color": 4
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -280,
+        -180
+      ],
+      "id": "8ebe97a4-4eca-498d-9850-e2cbae048020",
+      "name": "📋 Instruções"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "TRG | Schedule (Dom 2h)": {
+      "main": [
+        [
+          {
+            "node": "CFG - Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "CFG - Config": {
+      "main": [
+        [
+          {
+            "node": "DB | Ler Planilha",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "DB | Ler Planilha": {
+      "main": [
+        [
+          {
+            "node": "FN | Converter p/ CSV",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "FN | Converter p/ CSV": {
+      "main": [
+        [
+          {
+            "node": "DB | Upload → Google Drive",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "DB | Upload → Google Drive": {
+      "main": [
+        [
+          {
+            "node": "NTF | Sucesso → Telegram",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "TRG | Error Trigger": {
+      "main": [
+        [
+          {
+            "node": "NTF | Erro → Telegram",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "meta": {
+    "templateVersion": "1.0.0",
+    "author": "Macgyver Automações",
+    "category": "Backup / Dados",
+    "brand": "Macgyver Automações"
+  },
+  "tags": [
+    {
+      "name": "Macgyver Automações"
+    },
+    {
+      "name": "Free Template"
+    },
+    {
+      "name": "Google Sheets"
+    },
+    {
+      "name": "Google Drive"
+    },
+    {
+      "name": "Backup"
+    }
+  ]
+}

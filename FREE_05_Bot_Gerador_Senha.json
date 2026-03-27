@@ -1,0 +1,220 @@
+{
+  "name": "Macgyver Automações | Bot Gerador de Senha Segura (Telegram)",
+  "nodes": [
+    {
+      "parameters": {
+        "updates": [
+          "message"
+        ]
+      },
+      "type": "n8n-nodes-base.telegramTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        0,
+        0
+      ],
+      "id": "8cbc098a-3e1d-4d13-b4fe-1bb6c7a07e50",
+      "name": "TRG | Mensagem Telegram",
+      "webhookId": "8f27c2eb-c927-4c84-a45c-f1c41ee12a54",
+      "credentials": {
+        "telegramApi": {
+          "id": "__CREDENTIAL_ID__",
+          "name": "Telegram Bot"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "manual",
+        "duplicateItem": false,
+        "assignments": {
+          "assignments": [
+            {
+              "id": "9cbc9480-7074-4bec-8860-9490f6554b54",
+              "name": "app",
+              "value": "password-generator-bot",
+              "type": "string"
+            },
+            {
+              "id": "8934ebe6-c365-4b57-ac2d-2d828a34fe4b",
+              "name": "version",
+              "value": "1.0",
+              "type": "string"
+            },
+            {
+              "id": "34da002c-3dc6-442a-86b0-16cb349ef8db",
+              "name": "defaultLength",
+              "value": "16",
+              "type": "number"
+            },
+            {
+              "id": "2b527ed8-9acb-4280-aaa3-e2d42c235aa2",
+              "name": "maxLength",
+              "value": "64",
+              "type": "number"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        220,
+        0
+      ],
+      "id": "33c6cc97-fb35-45dd-a56e-f76e098f9099",
+      "name": "CFG - Config"
+    },
+    {
+      "parameters": {
+        "jsCode": "const msg = $('TRG | Mensagem Telegram').first().json;\nconst cfg = $('CFG - Config').first().json;\nconst text = (msg.message?.text || '').trim().toLowerCase();\nconst chatId = msg.message?.chat?.id;\n\nif (!chatId) return [];\n\n// Parse comando\nif (text === '/start' || text === '/help') {\n  return [{ json: {\n    chatId,\n    text: '🔐 *Bot Gerador de Senhas*\\n\\nComandos:\\n• `/senha` — gera senha de ' + cfg.defaultLength + ' chars\\n• `/senha 24` — gera senha de 24 chars\\n• `/pin` — gera PIN de 6 dígitos\\n• `/help` — mostra esta ajuda\\n\\n_Powered by ' + 'Macgyver Automações' + '_',\n    isPassword: false\n  }}];\n}\n\nif (text.startsWith('/pin')) {\n  const pin = Array.from({length: 6}, () => Math.floor(Math.random() * 10)).join('');\n  return [{ json: {\n    chatId,\n    text: '🔢 *Seu PIN:*\\n\\n`' + pin + '`\\n\\n_Salve e apague esta mensagem!_',\n    isPassword: true\n  }}];\n}\n\nif (text.startsWith('/senha')) {\n  const parts = text.split(' ');\n  let length = cfg.defaultLength;\n  if (parts[1]) {\n    length = Math.min(Math.max(parseInt(parts[1]) || cfg.defaultLength, 8), cfg.maxLength);\n  }\n  \n  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%&*_-+=?';\n  let password = '';\n  for (let i = 0; i < length; i++) {\n    password += chars.charAt(Math.floor(Math.random() * chars.length));\n  }\n  \n  // Garantir pelo menos 1 de cada tipo\n  const upper = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';\n  const lower = 'abcdefghijklmnopqrstuvwxyz';\n  const nums = '0123456789';\n  const specials = '!@#$%&*_-+=?';\n  \n  const arr = password.split('');\n  arr[0] = upper[Math.floor(Math.random() * upper.length)];\n  arr[1] = lower[Math.floor(Math.random() * lower.length)];\n  arr[2] = nums[Math.floor(Math.random() * nums.length)];\n  arr[3] = specials[Math.floor(Math.random() * specials.length)];\n  \n  // Shuffle (Fisher-Yates)\n  for (let i = arr.length - 1; i > 0; i--) {\n    const j = Math.floor(Math.random() * (i + 1));\n    [arr[i], arr[j]] = [arr[j], arr[i]];\n  }\n  \n  const finalPwd = arr.join('');\n  \n  return [{ json: {\n    chatId,\n    text: '🔐 *Sua senha (' + length + ' chars):*\\n\\n`' + finalPwd + '`\\n\\n✅ Maiúsculas, minúsculas, números e símbolos\\n\\n_Salve e apague esta mensagem!_',\n    isPassword: true\n  }}];\n}\n\n// Comando não reconhecido\nreturn [{ json: {\n  chatId,\n  text: '🤔 Não entendi. Use `/senha`, `/pin` ou `/help`.',\n  isPassword: false\n}}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        440,
+        0
+      ],
+      "id": "3d80ecaf-1d60-4364-b1fa-bd91ffeeb89f",
+      "name": "FN | Gerar Senha/PIN"
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $json.chatId }}",
+        "text": "={{ $json.text }}",
+        "additionalFields": {
+          "parse_mode": "Markdown"
+        }
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        660,
+        0
+      ],
+      "id": "7b2ee6c9-1a64-47ce-b188-af7cedf7f2f7",
+      "name": "NTF | Responder → Telegram",
+      "credentials": {
+        "telegramApi": {
+          "id": "__CREDENTIAL_ID__",
+          "name": "Telegram Bot"
+        }
+      }
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.errorTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        300
+      ],
+      "id": "526afb6f-f204-4700-9f91-abceafb2ab09",
+      "name": "TRG | Error Trigger"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Log erro silencioso — não manda pro usuário\nconst err = $input.first().json;\nreturn [{ json: {\n  level: 'ERROR',\n  workflow: 'password-generator-bot',\n  error: err.execution?.error?.message || 'Erro desconhecido',\n  executionId: err.execution?.id || 'N/A',\n  ts: new Date().toISOString()\n}}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        220,
+        300
+      ],
+      "id": "66cd6aa3-e307-417e-96c3-3a886ac674b2",
+      "name": "LOG | Registrar Erro"
+    },
+    {
+      "parameters": {
+        "content": "## 🔐 Macgyver Automações | Bot Gerador de Senha (Telegram)\n\n**O que faz:** Bot Telegram que gera senhas seguras e PINs sob demanda.\n\n**Comandos:**\n- `/senha` — gera senha de 16 chars\n- `/senha 32` — gera senha de 32 chars\n- `/pin` — gera PIN de 6 dígitos\n- `/help` — ajuda\n\n**Como configurar:**\n1. Crie bot via @BotFather\n2. Configure credencial Telegram com o token\n3. Ative o workflow (ele registra o webhook automaticamente)\n4. Mande `/start` pro bot!\n\n**Credencial:** Telegram Bot\n\n**Segurança:** A senha é gerada no n8n, nunca sai de lá. Fisher-Yates shuffle garante distribuição uniforme.\n\n🔗 Macgyver Automações",
+        "height": 480,
+        "width": 420,
+        "color": 4
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -280,
+        -160
+      ],
+      "id": "db736972-f612-49b6-b0d2-038877dc6f63",
+      "name": "📋 Instruções"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "TRG | Mensagem Telegram": {
+      "main": [
+        [
+          {
+            "node": "CFG - Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "CFG - Config": {
+      "main": [
+        [
+          {
+            "node": "FN | Gerar Senha/PIN",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "FN | Gerar Senha/PIN": {
+      "main": [
+        [
+          {
+            "node": "NTF | Responder → Telegram",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "TRG | Error Trigger": {
+      "main": [
+        [
+          {
+            "node": "LOG | Registrar Erro",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "meta": {
+    "templateVersion": "1.0.0",
+    "author": "Macgyver Automações",
+    "category": "Utilidades / Bot",
+    "brand": "Macgyver Automações"
+  },
+  "tags": [
+    {
+      "name": "Macgyver Automações"
+    },
+    {
+      "name": "Free Template"
+    },
+    {
+      "name": "Telegram"
+    },
+    {
+      "name": "Bot"
+    },
+    {
+      "name": "Segurança"
+    }
+  ]
+}

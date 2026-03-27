@@ -1,0 +1,295 @@
+{
+  "name": "Macgyver Automações | Monitor de Site com Alerta (Uptime)",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 5
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        0
+      ],
+      "id": "33674efb-0389-49d5-b017-3b53d2df887a",
+      "name": "TRG | A cada 5 min"
+    },
+    {
+      "parameters": {
+        "mode": "manual",
+        "duplicateItem": false,
+        "assignments": {
+          "assignments": [
+            {
+              "id": "1e55c5f1-ab10-4bd1-a75f-14988956c68f",
+              "name": "app",
+              "value": "site-monitor",
+              "type": "string"
+            },
+            {
+              "id": "dbf66902-927f-48dc-9386-2adbab6fe5e4",
+              "name": "version",
+              "value": "1.0",
+              "type": "string"
+            },
+            {
+              "id": "0be4e247-f27a-463f-aa98-709da15b6e44",
+              "name": "siteUrl",
+              "value": "https://seusite.com.br",
+              "type": "string"
+            },
+            {
+              "id": "bcb51c09-05eb-4062-a57f-3e45bdb0d1a8",
+              "name": "siteName",
+              "value": "Meu Site",
+              "type": "string"
+            },
+            {
+              "id": "b068c0b0-e086-4e08-9699-92f31ec91612",
+              "name": "timeoutMs",
+              "value": "10000",
+              "type": "number"
+            },
+            {
+              "id": "11a8987c-f34b-43b3-8eda-83f0b8582a6c",
+              "name": "chatIdTelegram",
+              "value": "__SEU_CHAT_ID__",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        220,
+        0
+      ],
+      "id": "a3777b42-144e-40a7-bd17-fc3bf188d93b",
+      "name": "CFG - Config"
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $json.siteUrl }}",
+        "options": {
+          "timeout": "={{ $json.timeoutMs }}",
+          "redirect": {
+            "redirect": {
+              "followRedirects": true
+            }
+          },
+          "response": {
+            "response": {
+              "fullResponse": true
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        440,
+        0
+      ],
+      "id": "c754f0ae-1849-4da0-b11c-5b5beb0f7db9",
+      "name": "HTTP | Ping Site",
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "jsCode": "const cfg = $('CFG - Config').first().json;\nconst response = $input.first().json;\n\n// Check for error (timeout, DNS failure, etc)\nconst hasError = response.error || response.code === 'ETIMEDOUT' || response.code === 'ENOTFOUND';\nconst statusCode = response.statusCode || response.headers?.['status'] || 0;\nconst isDown = hasError || statusCode < 200 || statusCode >= 400;\n\nreturn [{\n  json: {\n    isDown,\n    statusCode: statusCode || 'ERROR',\n    siteName: cfg.siteName,\n    siteUrl: cfg.siteUrl,\n    errorMessage: hasError ? (response.error?.message || response.message || 'Timeout/DNS') : null,\n    checkedAt: new Date().toISOString()\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        660,
+        0
+      ],
+      "id": "e4f6617b-abda-4853-b22e-6245063d218d",
+      "name": "FN | Avaliar Resposta"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": false,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "860d8791-7cfd-444e-9c5c-713ae3160bc8",
+              "leftValue": "={{ $json.isDown }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        880,
+        0
+      ],
+      "id": "1a656bd3-0a83-4e01-a85f-a9a70cbc73d0",
+      "name": "IF | Site Caiu?"
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $('CFG - Config').item.json.chatIdTelegram }}",
+        "text": "=🔴 *SITE FORA DO AR!*\n\n🌐 *Site:* {{ $json.siteName }}\n🔗 *URL:* {{ $json.siteUrl }}\n📊 *Status:* {{ $json.statusCode }}\n❌ *Erro:* {{ $json.errorMessage || 'Status HTTP inválido' }}\n⏰ *Checado em:* {{ $json.checkedAt }}",
+        "additionalFields": {
+          "parse_mode": "Markdown"
+        }
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        1100,
+        -60
+      ],
+      "id": "3aff2dbc-da62-4e88-bd2f-a6567db3f7d7",
+      "name": "NTF | ALERTA Site Down → Telegram",
+      "credentials": {
+        "telegramApi": {
+          "id": "__CREDENTIAL_ID__",
+          "name": "Telegram Bot"
+        }
+      }
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        1100,
+        140
+      ],
+      "id": "264bf072-9bc3-4dd4-9a79-845cc5458a53",
+      "name": "END | Site OK ✅"
+    },
+    {
+      "parameters": {
+        "content": "## 🌐 Macgyver Automações | Monitor de Site (Uptime)\n\n**O que faz:** Pinga seu site a cada 5 min. Se cair (status != 2xx ou timeout), manda alerta no Telegram.\n\n**Como configurar:**\n1. Edite `CFG - Config`:\n   - `siteUrl`: URL completa do site\n   - `siteName`: nome amigável\n   - `timeoutMs`: timeout em ms (10000 = 10s)\n   - `chatIdTelegram`: seu Chat ID\n2. Configure credencial Telegram\n3. Ative o workflow!\n\n**Dica:** Duplique pra monitorar múltiplos sites.\n\n**Credencial:** Telegram Bot\n\n🔗 Macgyver Automações",
+        "height": 420,
+        "width": 420,
+        "color": 4
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -280,
+        -160
+      ],
+      "id": "178d20d9-f788-4872-9634-18c9af67b1e1",
+      "name": "📋 Instruções"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "TRG | A cada 5 min": {
+      "main": [
+        [
+          {
+            "node": "CFG - Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "CFG - Config": {
+      "main": [
+        [
+          {
+            "node": "HTTP | Ping Site",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP | Ping Site": {
+      "main": [
+        [
+          {
+            "node": "FN | Avaliar Resposta",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "FN | Avaliar Resposta": {
+      "main": [
+        [
+          {
+            "node": "IF | Site Caiu?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF | Site Caiu?": {
+      "main": [
+        [
+          {
+            "node": "NTF | ALERTA Site Down → Telegram",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "END | Site OK ✅",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "meta": {
+    "templateVersion": "1.0.0",
+    "author": "Macgyver Automações",
+    "category": "DevOps / Monitoramento",
+    "brand": "Macgyver Automações"
+  },
+  "tags": [
+    {
+      "name": "Macgyver Automações"
+    },
+    {
+      "name": "Free Template"
+    },
+    {
+      "name": "Uptime"
+    },
+    {
+      "name": "Monitor"
+    },
+    {
+      "name": "Telegram"
+    }
+  ]
+}

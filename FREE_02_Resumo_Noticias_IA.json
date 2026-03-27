@@ -1,0 +1,389 @@
+{
+  "name": "Macgyver Automações | Resumo Diário de Notícias com IA",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 8 * * 1-5"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        0
+      ],
+      "id": "00c5e8eb-b4d3-4933-88c4-79c92a925122",
+      "name": "TRG | Schedule (Seg-Sex 8h)"
+    },
+    {
+      "parameters": {
+        "mode": "manual",
+        "duplicateItem": false,
+        "assignments": {
+          "assignments": [
+            {
+              "id": "56004b98-717f-4e67-8fd2-c914751d745e",
+              "name": "app",
+              "value": "daily-news-summary",
+              "type": "string"
+            },
+            {
+              "id": "79379f1a-36e2-457a-8da3-40c1ff92d400",
+              "name": "version",
+              "value": "1.0",
+              "type": "string"
+            },
+            {
+              "id": "3b9267b0-8eb5-4ddd-9b0a-14b7e4213305",
+              "name": "rssFeeds",
+              "value": "https://g1.globo.com/rss/g1/,https://feeds.folha.uol.com.br/mercado/rss091.xml,https://tecnoblog.net/feed/",
+              "type": "string"
+            },
+            {
+              "id": "69d1c523-91a7-4770-8aec-ce1668bccf52",
+              "name": "maxItemsPerFeed",
+              "value": "5",
+              "type": "number"
+            },
+            {
+              "id": "71cf90f8-0617-47ac-92c8-3b5bd1498fab",
+              "name": "chatIdTelegram",
+              "value": "__SEU_CHAT_ID__",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        220,
+        0
+      ],
+      "id": "a8aa440f-1090-4f15-924b-7bb1529db82c",
+      "name": "CFG - Config"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Gera lista de feeds a partir do CFG\nconst cfg = $('CFG - Config').first().json;\nconst feeds = cfg.rssFeeds.split(',').map(f => f.trim()).filter(Boolean);\n\nreturn feeds.map(url => ({ json: { feedUrl: url, maxItems: cfg.maxItemsPerFeed } }));"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        440,
+        0
+      ],
+      "id": "7185ce14-ca13-43ce-ba8d-483c4224908c",
+      "name": "FN | Listar Feeds"
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.feedUrl }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.rssFeedRead",
+      "typeVersion": 1.1,
+      "position": [
+        660,
+        0
+      ],
+      "id": "cea36608-0924-4698-95f6-1515de2b8d30",
+      "name": "HTTP | Ler RSS",
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "jsCode": "// Agregar e limitar notícias\nconst allItems = $input.all();\nconst maxPerFeed = 5;\n\n// Pega título + link + content resumido\nconst news = allItems\n  .filter(item => item.json.title && !item.json.error)\n  .slice(0, 15)\n  .map(item => ({\n    titulo: item.json.title || '',\n    link: item.json.link || '',\n    fonte: item.json.creator || item.json['dc:creator'] || 'N/A',\n    resumo: (item.json.contentSnippet || item.json.content || '').replace(/<[^>]*>/g, '').substring(0, 200)\n  }));\n\nif (news.length === 0) {\n  return [{ json: { skip: true, reason: 'Nenhuma notícia encontrada' } }];\n}\n\nconst textBlock = news.map((n, i) => \n  `${i+1}. ${n.titulo}\\nFonte: ${n.fonte}\\n${n.resumo}...\\n${n.link}`\n).join('\\n\\n');\n\nreturn [{ json: { newsBlock: textBlock, totalNews: news.length, skip: false } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        880,
+        0
+      ],
+      "id": "1a93378c-45e9-4040-b191-1ae4282f117c",
+      "name": "FN | Agregar Notícias"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": false,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "c85df86d-a311-4af0-851a-1ce7a54f882b",
+              "leftValue": "={{ $json.skip }}",
+              "rightValue": false,
+              "operator": {
+                "type": "boolean",
+                "operation": "false"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1100,
+        0
+      ],
+      "id": "0a2b898f-6f0a-4394-8d74-b59bc439e70c",
+      "name": "IF | Tem Notícias?"
+    },
+    {
+      "parameters": {
+        "model": "gpt-4o-mini",
+        "messages": {
+          "values": [
+            {
+              "content": "=Você é um editor de newsletter matinal brasileiro. Resuma as notícias abaixo em um briefing conciso e direto, agrupado por tema (Economia, Tech, Geral). Use bullet points curtos. Máximo 800 caracteres total. Comece com \"☀️ Bom dia! Seu resumo de hoje:\" e termine com \"Bom dia produtivo!\"\n\nNOTÍCIAS:\n{{ $json.newsBlock }}"
+            }
+          ]
+        },
+        "options": {
+          "temperature": 0.5,
+          "maxTokens": 600
+        }
+      },
+      "type": "n8n-nodes-base.openAi",
+      "typeVersion": 1.8,
+      "position": [
+        1320,
+        0
+      ],
+      "id": "79d1a557-08e0-4114-a320-fe5cd756f092",
+      "name": "AI | Resumir Notícias (OpenAI)",
+      "credentials": {
+        "openAiApi": {
+          "id": "__CREDENTIAL_ID__",
+          "name": "OpenAI"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $('CFG - Config').item.json.chatIdTelegram }}",
+        "text": "={{ $json.content || $json.choices[0].message.content || $json.message.content || 'Erro ao gerar resumo' }}",
+        "additionalFields": {
+          "parse_mode": "Markdown"
+        }
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        1540,
+        0
+      ],
+      "id": "2a508d2e-04e9-4afc-a987-34f9843541e7",
+      "name": "NTF | Enviar Resumo → Telegram",
+      "credentials": {
+        "telegramApi": {
+          "id": "__CREDENTIAL_ID__",
+          "name": "Telegram Bot"
+        }
+      }
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        1320,
+        200
+      ],
+      "id": "628ff121-1581-4d6f-97eb-66a72ee41701",
+      "name": "END | Sem Notícias Hoje"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.errorTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        400
+      ],
+      "id": "a1cdf9f4-c019-4d70-afb0-a0ebfdaecaf6",
+      "name": "TRG | Error Trigger"
+    },
+    {
+      "parameters": {
+        "chatId": "=__SEU_CHAT_ID__",
+        "text": "=🚨 *Erro no workflow News Summary*\n\n*Erro:* {{ $json.execution?.error?.message || 'Erro desconhecido' }}\n*Execution:* {{ $json.execution?.id || 'N/A' }}",
+        "additionalFields": {
+          "parse_mode": "Markdown"
+        }
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        220,
+        400
+      ],
+      "id": "98fea46a-1cd5-40c0-8808-8ff83d9db946",
+      "name": "NTF | Erro → Telegram",
+      "credentials": {
+        "telegramApi": {
+          "id": "__CREDENTIAL_ID__",
+          "name": "Telegram Bot"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "content": "## 📰 Macgyver Automações | Resumo Diário de Notícias com IA\n\n**O que faz:** Todo dia às 8h (Seg-Sex), lê RSS de sites de notícias, pede pro GPT resumir, e manda no Telegram.\n\n**Como configurar:**\n1. Crie bot Telegram (@BotFather) e pegue Chat ID\n2. Edite `CFG - Config`:\n   - `rssFeeds`: URLs de RSS separados por vírgula\n   - `chatIdTelegram`: seu Chat ID\n3. Configure credencial OpenAI (API Key)\n4. Configure credencial Telegram\n5. Ative o workflow!\n\n**Feeds sugeridos:**\n- G1: https://g1.globo.com/rss/g1/\n- Folha Mercado: https://feeds.folha.uol.com.br/mercado/rss091.xml\n- TecnoBlog: https://tecnoblog.net/feed/\n\n**Credenciais:** OpenAI API, Telegram Bot\n\n🔗 Macgyver Automações",
+        "height": 520,
+        "width": 420,
+        "color": 4
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -280,
+        -200
+      ],
+      "id": "46b614c2-1ee4-4b92-8af2-56d9963f08f5",
+      "name": "📋 Instruções"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "TRG | Schedule (Seg-Sex 8h)": {
+      "main": [
+        [
+          {
+            "node": "CFG - Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "CFG - Config": {
+      "main": [
+        [
+          {
+            "node": "FN | Listar Feeds",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "FN | Listar Feeds": {
+      "main": [
+        [
+          {
+            "node": "HTTP | Ler RSS",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP | Ler RSS": {
+      "main": [
+        [
+          {
+            "node": "FN | Agregar Notícias",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "FN | Agregar Notícias": {
+      "main": [
+        [
+          {
+            "node": "IF | Tem Notícias?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF | Tem Notícias?": {
+      "main": [
+        [
+          {
+            "node": "AI | Resumir Notícias (OpenAI)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "END | Sem Notícias Hoje",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI | Resumir Notícias (OpenAI)": {
+      "main": [
+        [
+          {
+            "node": "NTF | Enviar Resumo → Telegram",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "TRG | Error Trigger": {
+      "main": [
+        [
+          {
+            "node": "NTF | Erro → Telegram",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "meta": {
+    "templateVersion": "1.0.0",
+    "author": "Macgyver Automações",
+    "category": "Produtividade / IA",
+    "brand": "Macgyver Automações"
+  },
+  "tags": [
+    {
+      "name": "Macgyver Automações"
+    },
+    {
+      "name": "Free Template"
+    },
+    {
+      "name": "RSS"
+    },
+    {
+      "name": "OpenAI"
+    },
+    {
+      "name": "Telegram"
+    },
+    {
+      "name": "IA"
+    }
+  ]
+}
